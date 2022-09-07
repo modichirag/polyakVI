@@ -20,7 +20,8 @@ class Polyak():
         eps = self.gamma*abs(loss)/self.gradnorm**2
         if self.epsmax > 0.:
             eps = min(self.epsmax, eps)
-            eps = eps * np.sign(loss)
+            
+        eps = eps * np.sign(loss)
         self.eps = eps
         self.opt.learning_rate = self.eps
         self.prepared = True
@@ -60,7 +61,7 @@ class Polyak_slack():
         self.eps = eps
         self.opt.learning_rate = self.eps
         self.slack = max(0, self.slack - self.delta + self.delta * delta_step)
-        self.prepare = True
+        self.prepared = True
 
     def apply_gradients(self, zipped_grads_and_vars):
         if self.prepared:
