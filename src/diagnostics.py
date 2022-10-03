@@ -57,17 +57,17 @@ def compare_hist(samples, ref_samples, nbins=20, lbls="", savepath="./tmp/", sav
     #return fig, ax
 
 
-def plot_polyak_losses(losses, elbos, epss, savepath="./tmp/", savename=None, suptitle=None):
+def plot_polyak_losses(losses, elbos, epss, savepath="./tmp/", savename=None, suptitle=None, skip=100):
 
     fig, ax = plt.subplots(1, 3, figsize=(14, 4))
     
-    ax[0].plot(-elbos)
+    ax[0].plot(-elbos[skip:])
     ax[0].semilogy()
     ax[0].set_title('-ELBO')
-    ax[1].plot(epss)
+    ax[1].plot(epss[skip:])
     ax[1].set_yscale('symlog', linthresh=1e-5)
     ax[1].set_title('step size')
-    ax[2].plot(abs(losses))
+    ax[2].plot(abs(losses[skip:]))
     ax[2].semilogy()
     ax[2].set_title('Loss')
     
@@ -78,9 +78,9 @@ def plot_polyak_losses(losses, elbos, epss, savepath="./tmp/", savename=None, su
     plt.close()
     #return fig, ax
     
-def plot_bbvi_losses(elbos, savepath="./tmp/", savename=None, suptitle=None):
+def plot_bbvi_losses(elbos, savepath="./tmp/", savename=None, suptitle=None, skip=100):
 
-    plt.plot(-elbos)
+    plt.plot(-elbos[skip:])
     plt.semilogy()
     plt.title('-ELBO')
     plt.grid(which='both', lw=0.5)
