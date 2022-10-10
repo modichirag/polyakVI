@@ -70,6 +70,64 @@ def polyakvi_score(model, log_likelihood, prior=False, nsamples=tf.constant(32))
 
 
 @tf.function
+def polyakvi_scorenorm_adv(model, log_likelihood, prior=None, nsamples=tf.constant(32)):   
+    '''Implement L_2norm[\grad_theta \log(q) - \log(p)] as the loss
+    '''
+    #sample = tf.stop_gradient(model.sample(nsamples))
+    sample = model.sample(nsamples) * 1.
+    sample1 = tf.stop_gradient(sample *1.+0.)
+    
+    with tf.GradientTape(persistent=True) as tape:
+        tape.watch(sample)
+        
+        with tf.GradientTape(persistent=True) as tape_in:
+            tape_in.watch(sample)
+
+            logl = log_likelihood(sample)
+            if prior: 
+                logpr = model.log_prior(sample)
+            else:
+                logpr = 0 
+            logp = logl + logpr
+            logq = model.log_prob(sample)
+            f = logq - logp 
+            f = tf.reduce_mean(f)
+            
+        grad_theta = tape_in.gradient(f, sample)
+        loss = tf.linalg.norm(grad_theta)
+        
+    gradients_adv = tape.gradient(loss, sample)
+    sample2 = tf.stop_gradient(sample + 1e-2*gradients_adv)
+
+    #Now do score gradient 
+    logl1 = tf.stop_gradient(log_likelihood(sample1))
+    if prior: 
+        logpr1 = model.log_prior(sample1)
+    else:
+        logpr1 = 0 
+    logp1 = logl1 + logpr1
+
+    logl2 = tf.stop_gradient(log_likelihood(sample2))
+    if prior: 
+        logpr2 = model.log_prior(sample2)
+    else:
+        logpr2 = 0 
+    logp2 = logl2 + logpr2
+
+    with tf.GradientTape(persistent=True) as tape:
+        tape.watch(model.trainable_variables)
+        logq1 = model.log_prob(sample1)
+        logq2 = model.log_prob(sample2)
+        f = (logq1 - logp1) - (logq2 - logp2)
+        f = tf.reduce_mean(f)
+        elbo =  -1. * tf.reduce_mean(logq1 - logp1)
+        
+    gradients = tape.gradient(f, model.trainable_variables)
+    return elbo, f, gradients
+
+
+
+@tf.function
 def polyakvi_scorenorm(model, log_likelihood, prior=None, nsamples=tf.constant(32)):   
     '''Implement L_2norm[\grad_theta \log(q) - \log(p)] as the loss
     '''
@@ -182,6 +240,7 @@ def train(qdist, log_likelihood, prior=False,  mode='full', nsamples=1, niter=10
         elif mode == 'score': elbo, loss, grads = polyakvi_score(qdist, log_likelihood, prior=prior, nsamples=tf.constant(nsamples))
         elif mode == 'qonly': elbo, loss, grads = polyakvi_qgrad(qdist, log_likelihood, prior=prior, nsamples=tf.constant(nsamples))
         elif mode == 'scorenorm': elbo, loss, grads = polyakvi_scorenorm(qdist, log_likelihood, prior=prior, nsamples=tf.constant(nsamples))
+        elif mode == 'scorenorm_adv': elbo, loss, grads = polyakvi_scorenorm_adv(qdist, log_likelihood, prior=prior, nsamples=tf.constant(nsamples))
         elif mode == 'fullgradnorm': elbo, loss, grads = polyakvi_fullgradnorm(qdist, log_likelihood, prior=prior, nsamples=tf.constant(nsamples))
         else:
             print("\nERROR : mode should be one of - full, score, qonly, scorenorm, fullgradnorm\n")
