@@ -12,7 +12,8 @@ sys.path.append('../../normalizing_flows/src/')
 import flows
 
 sys.path.append('../src/')
-import bbvi, polyakvi, gaussianq, mapp
+import bbvi, polyakvi, mapp, hmc
+import gaussianq
 import diagnostics as dg
 
 import models
@@ -25,7 +26,7 @@ parser.add_argument('--mode', type=str, help='which mode of the alg to use')
 #arguments for flow
 parser.add_argument('--nlayers', type=int, default=5, help='number of layers, default=5')
 parser.add_argument('--nhidden', type=int, default=32, help='number of hddden params, default=32')
-parser.add_argument('--qmodel', type=str, default="maf", help='model, one of maf, nsf or mdn, default=maf')
+parser.add_argument('--qmodel', type=str, default="frg", help='model, one of maf, nsf or mdn, default=maf')
 parser.add_argument('--seed', type=int, default=0, help='seed between 0-999, default=0')
 parser.add_argument('--niter', type=int, default=5001, help='number of iterations in training')
 parser.add_argument('--nsamples', type=int, default=32, help='batch size, default=32')
@@ -72,9 +73,9 @@ x0[0, -1] = model.y.numpy().std()
 print("Start at : ", x0)
 x0 = tf.Variable(x0)
 print(x0.shape)
-x0, losses = mapp.train(x0, model.loglik, niter=101)
-print("Mapp value : ", x0)
-print("Mapp value : ", model.transform_samples(x0.numpy()))
+#x0, losses = mapp.train(x0, model.loglik, niter=101)
+print("Raw Mapp value : ", x0)
+print("True Mapp value : ", model.transform_samples(x0.numpy()))
 print("Posterior mean : ", model.samples.mean(axis=0))
 print(x0.shape)
 
@@ -138,11 +139,29 @@ elif args.alg == 'bbvi':
   dg.plot_bbvi_losses(elbos, savepath, suptitle=suptitle)
   np.save(savepath + 'elbo', elbos)
 
+elif args.alg == 'hmc':
+  qsamples, accepted, probs, counts = hmc.sample(model.loglik, grad_log_prob=None, 
+                                                 step_size=0.001, 
+                                                 Nleapfrog=100, 
+                                                 D=model.D, 
+                                                 nsamples=1000, 
+                                                 burnin=100,
+                                                 q0=x0, nchains=4)
+  #
+  #dg.plot_bbvi_losses(elbos, savepath, suptitle=suptitle)
+  #np.save(savepath + 'elbo', elbos)
+  qdist = None
+  print("Fraction accepted: ", accepted.sum()/accepted.size)
+  print(qsamples.shape)
+  qsamples = np.squeeze(qsamples).reshape(-1, model.D)
+  qsamples = model.transform_samples(qsamples)
 
 
 #qdist.save_weights(savepath + 'model')
 #tf.saved_model.save(qdist, savepath + 'model')
-qsamples = model.gensamples(qdist)
+if qdist is not None:
+  qsamples = model.gensamples(qdist)
+
 np.save(savepath + 'samples', qsamples)
 dg.compare_hist(qsamples, model.samples, savepath=savepath, savename='hist', suptitle=suptitle)
 

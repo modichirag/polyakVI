@@ -57,6 +57,54 @@ class PDB_5():
         return self.transform_samples(samples)
 
 
+
+
+class PDB_5_nosigma():
+    '''Fix sigma to the true value
+    '''
+    def __init__(self):
+        posterior = my_pdb.posterior(pos[5])
+        posname = posterior.name
+        refdrawsdict = posterior.reference_draws()
+        stanmodel, data = posterior.model, posterior.data.values()
+        refinfo = posterior.reference_draws_info()
+        refdrawsdict = posterior.reference_draws()
+        keys = refdrawsdict[0].keys()
+        stansamples = []
+        for key in keys:
+            stansamples.append(np.array([refdrawsdict[i][key] for i in range(len(refdrawsdict))]).flatten())
+        #print(stanmodel.code('stan'))
+        
+        ##Transform
+        self.D = 3
+        self.offset = 5
+        self.earn = tf.constant(np.log(data['earn']).astype(np.float32))
+        self.y = self.earn
+        self.height = tf.constant(np.log(data['height']).astype(np.float32))
+        self.male = tf.constant(np.array(data['male']).astype(np.float32))
+        self.samples = np.array(stansamples).copy().astype(np.float32).T
+        self.samples = self.samples[...,:-1]
+
+    @tf.function
+    def loglik(self, w):
+        w0, w1, w2 = tf.split(w, self.D, 1)
+        mu = w0 + w1*self.height + w2*self.male + self.offset
+        #sigma = tf.exp(logsigma)
+        sigma = self.samples[..., -1].mean()
+        ll = tfd.Normal(mu, sigma).log_prob(self.y)
+        return tf.reduce_sum(ll, axis=1)
+
+    def transform_samples(self, samples):
+        samples[:, 0] += self.offset
+        #samples[:, -1] = tf.nn.softplus(samples[:, -1])
+        #samples[-1] = tf.exp(samples[-1])
+        return samples
+
+    def gensamples(self, qdist, n=1000):
+        samples = qdist.sample(n).numpy()
+        return self.transform_samples(samples)
+
+
 class PDB_1():
     
     def __init__(self):
