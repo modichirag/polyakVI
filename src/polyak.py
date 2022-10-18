@@ -25,6 +25,9 @@ class Polyak():
         self.eps = eps
         self.opt.learning_rate = self.eps
         self.prepared = True
+        if np.isnan(self.eps):
+            print("NaNs!!! :: ", epoch, opt.eps, loss, opt.gradnorm)
+            raise RuntimeError
     
     def apply_gradients(self, zipped_grads_and_vars):
         if self.prepared:

@@ -133,7 +133,7 @@ def _bbvi_elbo(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
         logpr = log_prior(sample)
         logq = model.log_prob(sample)
         elbo = logl + logpr - logq
-        negelbo = -1. * elbo
+        negelbo = -1. * tf.reduce_mean(elbo, axis=0)
         loss = negelbo
         
     gradients = tape.gradient(negelbo, model.trainable_variables)
@@ -171,33 +171,41 @@ def _bbvi_elbo(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
 
 
 
-def bbvi_elbo(model, log_likelihood, grad_log_likelihood=None, log_prior, nsamples=tf.constant(32)):   
+def bbvi_elbo(model, log_likelihood, log_prior, grad_log_likelihood=None, nsamples=tf.constant(32)):   
     
     if grad_log_likelihood is None:
-        return _bbvi_elbo(model, log_likelihood, prior=prior, nsamples=nsamples)
+        return _bbvi_elbo(model, log_likelihood, log_prior=log_prior, nsamples=nsamples)
     else:
         print("Outdated code")
         raise Exception
         #return _bbvi_elbo_gradloglik(model, log_likelihood, grad_log_likelihood, prior=prior, nsamples=nsamples)
 
 
-
+#######
 def train(qdist, log_likelihood, grad_log_likelihood=None, prior=False, opt=None, lr=1e-3, mode='full', nsamples=32, niter=1001, nprint=None, verbose=True, callback=None):
-    
+
+    print("train function")
     if opt is None: opt = tf.keras.optimizers.Adam(learning_rate=lr)
-    elbos, epss, losses = [], [], []
-    losses = []
     if nprint is None: nprint = niter //10
     if not prior: log_prior = lambda x : 0.
     
+    if mode == 'full': val_and_grad_func = bbvi_elbo
+    elif mode == 'score': val_and_grad_func = bbvi_score
+    elif mode == 'path': val_and_grad_func = bbvi_path
+    elif mode == 'evidence': val_and_grad_func = bbvi_evidence
+    elif mode == 'scorenorm': val_and_grad_func = bbvi_scorenorm
+    elif mode == 'fullgradnorm': val_and_grad_func = bbvi_fullgradnorm
+    else:
+        print("\nERROR : mode not recognized\n")
+        raise RuntimeError
+
+    #
+    #MAIN OPTIMIZATION LOOP
+    elbos, epss, losses = [], [], []
+    losses = []
     for epoch in range(niter+1):
-        
-        if mode == 'full': elbo, loss, grads = bbvi_elbo(qdist, log_likelihood, grad_log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
-        elif mode == 'score': elbo, loss, grads = bbvi_score(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
-        elif mode == 'path': elbo, loss, grads = bbvi_path(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
-        elif mode == 'evidence': elbo, loss, grads = bbvi_evidence(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
-        elif mode == 'scorenorm': elbo, loss, grads = bbvi_scorenorm(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
-        elif mode == 'fullgradnorm': elbo, loss, grads = bbvi_fullgradnorm(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
+
+        elbo, loss, grads = val_and_grad_func(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
         elbo = elbo.numpy()
         #
         if np.isnan(elbo):
