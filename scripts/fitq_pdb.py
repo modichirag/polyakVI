@@ -158,15 +158,16 @@ if args.alg == 'polyak' or args.alg == 'solyak':
   np.save(savepath + 'eps', epss)
 
 elif args.alg == 'bbvi':
-    qdist, elbos = bbvi.train(qdist, model.log_likelihood_and_grad,
+    qdist, losses, elbos = bbvi.train(qdist, model.log_likelihood_and_grad,
                               mode=args.mode,
                               nsamples=args.nsamples, 
                               lr=args.lr, 
                               niter=args.niter, 
                               callback=callback)
     #
-    dg.plot_bbvi_losses(elbos, savepath, suptitle=suptitle)
+    dg.plot_bbvi_losses(elbos, losses, savepath, suptitle=suptitle)
     np.save(savepath + 'elbo', elbos)
+    np.save(savepath + 'losses', losses)
     
 elif args.alg == 'hmc':
     qsamples, accepted, probs, counts = hmc.sample(model.loglik, grad_log_prob=None, 

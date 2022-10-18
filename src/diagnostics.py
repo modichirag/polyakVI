@@ -78,14 +78,31 @@ def plot_polyak_losses(losses, elbos, epss, savepath="./tmp/", savename=None, su
     plt.close()
     #return fig, ax
     
-def plot_bbvi_losses(elbos, savepath="./tmp/", savename=None, suptitle=None, skip=100):
+def plot_bbvi_losses(elbos, losses=None, savepath="./tmp/", savename=None, suptitle=None, skip=100):
 
-    plt.plot(-elbos[skip:])
-    plt.semilogy()
-    plt.title('-ELBO')
-    plt.grid(which='both', lw=0.5)
-    plt.suptitle(suptitle)
-    if savename is None: savename='losses'
-    plt.savefig(savepath + savename)
-    plt.close()
-    
+    if losses is None:
+        plt.plot(-elbos[skip:])
+        plt.semilogy()
+        plt.title('-ELBO')
+        plt.grid(which='both', lw=0.5)
+        plt.suptitle(suptitle)
+        if savename is None: savename='losses'
+        plt.savefig(savepath + savename)
+        plt.close()
+
+    else:
+        fig, ax = plt.subplots(1, 2, figsize=(8, 3))
+
+        ax[0].plot(-elbos[skip:])
+        ax[0].semilogy()
+        ax[0].set_title('-ELBO')
+        ax[1].plot(losses[skip:])
+        ax[1].semilogy()
+        ax[1].set_title('Loss')
+
+        for axis in ax: axis.grid(which='both', lw=0.5)
+        plt.suptitle(suptitle)
+        if savename is None: savename='losses'
+        plt.savefig(savepath + savename)
+        plt.close()
+
