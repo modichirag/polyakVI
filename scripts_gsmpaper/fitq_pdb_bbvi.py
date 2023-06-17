@@ -37,8 +37,8 @@ parser.add_argument('--lr_map', type=float, default=0.01, help='lr for hill clim
 parser.add_argument('--nclimb', type=int, default=1000, help='number of iterations for hill climb')
 #arguments for path name
 parser.add_argument('--suffix', type=str, default="", help='suffix, default=""')
-parser.add_argument('--log', type=int, default=0, help='log print statements to file, default=0')
-parser.add_argument('--err', type=int, default=0, help='log err to file, default=0')
+parser.add_argument('--log', type=int, default=1, help='log print statements to file, default=0')
+parser.add_argument('--err', type=int, default=1, help='log err to file, default=0')
 
 print()
 args = parser.parse_args()
@@ -102,34 +102,36 @@ print("initialize at : ", x0)
 print()
 print("Start VI")
 
-def fit(x0, scale):
-    qdist = gaussianq.FR_Gaussian(D, mu=tf.constant(x0[0]), scale=args.scale)
+def fit(x0, batch_size, scale):
+    qdist = gaussianq.FR_Gaussian(D, mu=tf.constant(x0[0]), scale=scale)
     if args.covinit == 'noise':
         raise NotImplementedError
     print('log prob : ', qdist.log_prob(np.random.random(D).reshape(1, D).astype(np.float32)))
 
-    qdist, losses, elbos, qdivs, counts, fdivs = bbvi.train(qdist, model,
+    qdist, losses, elbos, qdivs, counts, fdivs = bbvi.train_frg(qdist, model,
                                                             mode=args.mode,
-                                                            batch=args.batch, 
+                                                            batch=batch_size, 
                                                             lr=args.lr, 
                                                             niter=args.niter,
                                                             nprint=args.niter//10,
                                                             callback=callback,
-                                                            samples=unc_samples_fvi)
+                                                            samples=unc_samples_fvi,
+                                                            savepath=savepath)
     return qdist, losses, elbos, qdivs, counts, fdivs
 
 
 #
 run = 1
-for scale in [args.scale, args.scale/10., args.scale/100.]:
-    try:
-        if run == 1:
-            print(f"Initializing with scale factor = {scale/args.scale}")
-            model.reset_gradcount()
-            qdist, losses, elbos, qdivs, counts, fdivs = fit(x0, scale)
-            run = 0
-    except Exception as e:
-        print(e)
+for batch in [args.batch, int(args.batch*2), int(args.batch*4)]:
+    for scale in [args.scale, args.scale/10., args.scale/100.]:
+        try:
+            if run == 1:
+                print(f"Try for batch factor = {batch/args.batch}, scale factor = {scale/args.scale}")
+                model.reset_gradcount()
+                qdist, losses, elbos, qdivs, counts, fdivs = fit(x0, batch, scale)
+                run = 0
+        except Exception as e:
+            print(e)
     
 #
 print(losses.shape, elbos.shape, qdivs.shape, counts.shape)

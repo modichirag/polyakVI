@@ -14,6 +14,8 @@ def gsm_path(args):
             fpath = f"{fpath}-modeinit2"
         else:
             fpath = f"{fpath}-modeinit"
+    if args.warmup == 1:
+        fpath = f"{fpath}-warmup"
     if args.suffix != '':
         fpath = f"{fpath}{args.suffix}"
 

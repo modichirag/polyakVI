@@ -10,7 +10,7 @@ for gpu in gpus:
 
 #
 sys.path.append('../src/')
-import bbvi, polyakvi, mapp, hmc, modevi, gsm
+import bbvi, polyakvi, gsm
 import gaussianq
 import diagnostics as dg
 
@@ -25,6 +25,7 @@ parser.add_argument('--nmodel', type=int, help='which PDB model')
 parser.add_argument('--seed', type=int, default=0, help='seed between 0-999, default=0')
 parser.add_argument('--niter', type=int, default=1001, help='number of iterations in training')
 parser.add_argument('--batch', type=int, default=2, help='batch size, default=2')
+parser.add_argument('--warmup', type=int, default=0, help='warmup with hill climb')
 #Arguments for qdist
 parser.add_argument('--scale', type=float, default=1., help='scale of Gaussian to initilize')
 parser.add_argument('--covinit', type=str, default='identity', help='initialize covariance at identity')
@@ -34,8 +35,8 @@ parser.add_argument('--lr_map', type=float, default=0.01, help='lr for hill clim
 parser.add_argument('--nclimb', type=int, default=1000, help='number of iterations for hill climb')
 #arguments for path name
 parser.add_argument('--suffix', type=str, default="", help='suffix, default=""')
-parser.add_argument('--log', type=int, default=0, help='log print statements to file, default=0')
-parser.add_argument('--err', type=int, default=0, help='log err to file, default=0')
+parser.add_argument('--log', type=int, default=1, help='log print statements to file, default=0')
+parser.add_argument('--err', type=int, default=1, help='log err to file, default=0')
 
 
 print()
@@ -102,8 +103,11 @@ print("initialize at : ", x0)
 print()
 print("Start VI")
 
-def fit(x0, scale):
+    
+
+def fit(x0, batch_size, scale):
     qdist = gaussianq.FR_Gaussian_cov(D, mu=tf.constant(x0[0]), scale=scale)
+    
     if args.covinit == 'noise':
         covinit = np.eye(D)
         for i in range(D):
@@ -111,8 +115,12 @@ def fit(x0, scale):
         qdist.cov.assign(covinit)
 
     print('log prob : ', qdist.log_prob(np.random.random(D).reshape(1, D).astype(np.float32)))
+
+    if args.warmup:
+        qdist = gsm.warmup(x0, model, qdist, args.nclimb, args.lr_map)
+
     qdist, qdivs, counts, fdivs = gsm.train(qdist, model,
-                                            batch_size=args.batch, 
+                                            batch_size=batch_size, 
                                             niter=args.niter, 
                                             callback=callback,
                                             samples=unc_samples_fvi,
@@ -121,15 +129,18 @@ def fit(x0, scale):
 
 #
 run = 1
-for scale in [args.scale, args.scale/10., args.scale/100.]:
-    try:
-        if run == 1:
-            print(f"Initializing with scale factor = {scale/args.scale}")
-            model.reset_gradcount()
-            qdist, qdivs, counts, fdivs = fit(x0, scale)
-            run = 0
-    except Exception as e:
-        print(e)
+for batch in [args.batch, int(args.batch*2)]:
+    for scale in [args.scale, args.scale/10., args.scale/100.]:
+#for batch in [args.batch]:
+#    for scale in [args.scale]:
+        try:
+            if run == 1:
+                print(f"Initializing with scale factor = {scale/args.scale}")
+                model.reset_gradcount()
+                qdist, qdivs, counts, fdivs = fit(x0, batch, scale)
+                run = 0
+        except Exception as e:
+            print(e)
 
 
 print("number of gradient calls in GSM : ", model.grad_count)
