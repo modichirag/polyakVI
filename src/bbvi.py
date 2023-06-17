@@ -5,10 +5,10 @@ import tensorflow as tf
 
 
 @tf.function
-def bbvi_score(model, log_likelihood, log_prior, nsamples=tf.constant(32)):   
+def bbvi_score(model, log_likelihood, log_prior, batch=tf.constant(32)):   
 
-    sample = tf.stop_gradient((model.sample(nsamples))) *1.
-    #sample = (model.sample(nsamples))
+    sample = tf.stop_gradient((model.sample(batch))) *1.
+    #sample = (model.sample(batch))
     with tf.GradientTape(persistent=True) as tape:
         tape.watch(model.trainable_variables)
         logl = log_likelihood(sample)
@@ -23,9 +23,9 @@ def bbvi_score(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
 
 
 @tf.function
-def bbvi_path(model, log_likelihood, log_prior, nsamples=tf.constant(32)):   
+def bbvi_path(model, log_likelihood, log_prior, batch=tf.constant(32)):   
 
-    eps = tf.stop_gradient(model.noise.sample(nsamples))
+    eps = tf.stop_gradient(model.noise.sample(batch))
     with tf.GradientTape(persistent=True) as tape:
         print("creating graph")
         tape.watch(model.trainable_variables)
@@ -42,18 +42,18 @@ def bbvi_path(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
 
 
 @tf.function
-def bbvi_evidence(model, log_likelihood, log_prior, nsamples=tf.constant(32)):   
+def bbvi_evidence(model, log_likelihood, log_prior, batch=tf.constant(32)):   
 
     with tf.GradientTape(persistent=True) as tape:
         tape.watch(model.trainable_variables)
 
-        sample1 = model.sample(nsamples) * 1.
+        sample1 = model.sample(batch) * 1.
         logl1 = log_likelihood(sample1)
         logpr1 = log_prior(sample1)
         logp1 = logl1 + logpr1
         logq1 = model.log_prob(sample1)
 
-        sample2 = model.sample(nsamples) * 1.
+        sample2 = model.sample(batch) * 1.
         logl2 = log_likelihood(sample2)
         logpr2 = log_prior(sample2)
         logp2 = logl2 + logpr2
@@ -68,10 +68,10 @@ def bbvi_evidence(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
 
 
 @tf.function
-def bbvi_scorenorm(model, log_likelihood, log_prior, nsamples=tf.constant(32)):   
+def bbvi_scorenorm(model, log_likelihood, log_prior, batch=tf.constant(32)):   
     '''Implement L_2norm[\grad_theta \log(q) - \log(p)] as the loss
     '''
-    sample = tf.stop_gradient(model.sample(nsamples))
+    sample = tf.stop_gradient(model.sample(batch))
 
     with tf.GradientTape(persistent=True) as tape:
         tape.watch(model.trainable_variables)
@@ -95,13 +95,13 @@ def bbvi_scorenorm(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
 
 
 @tf.function
-def bbvi_fullgradnorm(model, log_likelihood, log_prior, nsamples=tf.constant(32)):   
+def bbvi_fullgradnorm(model, log_likelihood, log_prior, batch=tf.constant(32)):   
     '''Implement L_2norm[\grad_theta \log(q) - \log(p)] as the loss
     '''
 
     with tf.GradientTape(persistent=True) as tape:
         tape.watch(model.trainable_variables)
-        sample = model.sample(nsamples) * 1.
+        sample = model.sample(batch) * 1.
         
         with tf.GradientTape(persistent=True) as tape_in:
             tape_in.watch(sample)
@@ -123,14 +123,16 @@ def bbvi_fullgradnorm(model, log_likelihood, log_prior, nsamples=tf.constant(32)
 
 
 @tf.function
-def _bbvi_elbo(model, log_likelihood, log_prior, nsamples=tf.constant(32)):   
+def _bbvi_elbo(model, log_likelihood, log_prior, batch=tf.constant(32)):   
 
     with tf.GradientTape(persistent=True) as tape:
         print("creating graph")
         tape.watch(model.trainable_variables)
-        sample = model.sample(nsamples) *1.
+        sample = model.sample(batch) *1.
         logl = log_likelihood(sample)
-        logpr = log_prior(sample)
+        if log_prior is not None:
+            logpr = log_prior(sample)
+        else: logpr = 0.
         logq = model.log_prob(sample)
         elbo = logl + logpr - logq
         negelbo = -1. * tf.reduce_mean(elbo, axis=0)
@@ -141,12 +143,12 @@ def _bbvi_elbo(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
 
 
 # @tf.function
-# def _bbvi_elbo_gradloglik(model, log_likelihood, grad_log_likelihood, log_prior, nsamples=tf.constant(32)):
+# def _bbvi_elbo_gradloglik(model, log_likelihood, grad_log_likelihood, log_prior, batch=tf.constant(32)):
 #     #I think this is outdated now
 #     with tf.GradientTape(persistent=True) as tape:
 #         #print("creating graph")
 #         tape.watch(model.trainable_variables)
-#         sample = model.sample(nsamples) *1.
+#         sample = model.sample(batch) *1.
 #         #
 #         if prior: 
 #             logp = model.log_prior(sample)
@@ -170,25 +172,27 @@ def _bbvi_elbo(model, log_likelihood, log_prior, nsamples=tf.constant(32)):
 #     return tf.reduce_mean(elbo), loss, gradients
 
 
+def qdivergence(qdist, model_log_prob, nsamples=32):
 
-def bbvi_elbo(model, log_likelihood, log_prior, grad_log_likelihood=None, nsamples=tf.constant(32)):   
+    samples = qdist.sample(nsamples)
+    logp1 = qdist.log_prob(samples)
+    logp2 = model_log_prob(samples)
+    div = tf.reduce_mean(logp1 - logp2)
+    return div, tf.reduce_mean(logp2), tf.reduce_mean(logp2)
+
+
+def bbvi_elbo(model, log_likelihood, log_prior, grad_log_likelihood=None, batch=tf.constant(32)):   
     
     if grad_log_likelihood is None:
-        return _bbvi_elbo(model, log_likelihood, log_prior=log_prior, nsamples=nsamples)
+        return _bbvi_elbo(model, log_likelihood, log_prior=log_prior, batch=batch)
     else:
         print("Outdated code")
         raise Exception
-        #return _bbvi_elbo_gradloglik(model, log_likelihood, grad_log_likelihood, prior=prior, nsamples=nsamples)
+        #return _bbvi_elbo_gradloglik(model, log_likelihood, grad_log_likelihood, prior=prior, batch=batch)
 
 
-#######
-def train(qdist, log_likelihood, grad_log_likelihood=None, prior=False, opt=None, lr=1e-3, mode='full', nsamples=32, niter=1001, nprint=None, verbose=True, callback=None):
 
-    print("train function")
-    if opt is None: opt = tf.keras.optimizers.Adam(learning_rate=lr)
-    if nprint is None: nprint = niter //10
-    if not prior: log_prior = lambda x : 0.
-    
+def parse_mode(mode):
     if mode == 'full': val_and_grad_func = bbvi_elbo
     elif mode == 'score': val_and_grad_func = bbvi_score
     elif mode == 'path': val_and_grad_func = bbvi_path
@@ -198,14 +202,24 @@ def train(qdist, log_likelihood, grad_log_likelihood=None, prior=False, opt=None
     else:
         print("\nERROR : mode not recognized\n")
         raise RuntimeError
+    return val_and_grad_func
+    
+#######
+def train(qdist, log_likelihood, grad_log_likelihood=None, prior=False, opt=None, lr=1e-3, mode='full', batch=32, niter=1001, nprint=None, verbose=True, callback=None):
 
+    print("train function")
+    if opt is None: opt = tf.keras.optimizers.Adam(learning_rate=lr)
+    if nprint is None: nprint = niter //10
+    if not prior: log_prior = lambda x : 0.
+    
+    val_and_grad_func = parse_mode(mode)
     #
     #MAIN OPTIMIZATION LOOP
     elbos, epss, losses = [], [], []
     losses = []
     for epoch in range(niter+1):
 
-        elbo, loss, grads = val_and_grad_func(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples))
+        elbo, loss, grads = val_and_grad_func(qdist, log_likelihood, log_prior=log_prior, batch=tf.constant(batch))
         elbo = elbo.numpy()
         #
         if np.isnan(elbo):
@@ -213,8 +227,14 @@ def train(qdist, log_likelihood, grad_log_likelihood=None, prior=False, opt=None
             break
 
         opt.apply_gradients(zip(grads, qdist.trainable_variables))
+
         elbos.append(elbo)
         losses.append(loss)
+
+        # if prior : model_log_prob = lambda x: log_likelihood(x) + log_prob(x)
+        # else: model_log_prob = lambda x: log_likelihood(x)
+        # qdiv = qdivergence(qdist, model_log_prob)
+        # qdiv.append(qdiv)
         
         if (epoch %nprint == 0) & verbose: 
             print("Elbo at epoch %d is"%epoch, elbo)
@@ -222,4 +242,5 @@ def train(qdist, log_likelihood, grad_log_likelihood=None, prior=False, opt=None
                 callback(qdist, [np.array(elbos)], epoch)
 
     return qdist, np.array(losses), np.array(elbos)
+
 

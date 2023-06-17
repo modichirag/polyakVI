@@ -339,7 +339,7 @@ def train(qdist, log_likelihood, prior=False,  mode='full', nsamples=1, niter=10
     #
     #MAIN OPTIMIZATION LOOP
     elbos, epss, losses = [], [], []
-    for epoch in range(niter):
+    for epoch in range(niter+1):
 
         if "adv" in mode:
             elbo, loss, grads = val_and_grad_func(qdist, log_likelihood, log_prior=log_prior, nsamples=tf.constant(nsamples),
